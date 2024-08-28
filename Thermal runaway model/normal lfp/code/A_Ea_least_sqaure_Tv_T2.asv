@@ -1,0 +1,57 @@
+clc
+clear
+load new_Temperature.mat
+Temp=new_Temperature(:,2);
+dTemp_dt=new_Temperature(:,3);
+numtimesteps=size(new_Temperature);
+
+
+Temp=double(Temp(74320:78597));
+dTemp_dt=double(dTemp_dt(74320:78597));
+
+% 设计巴特沃斯低通滤波器
+Fs = 1000; % 采样频率，示例中为1000 Hz
+Wn = 2*50/Fs; % 截止频率为50 Hz，根据信号特性确定
+[b,a] = butter(4, Wn); % 计算滤波器系数，滤波器的阶数为4
+
+% 对信号进行滤波
+dTemp_dt_filtered = filter(b, a, dTemp_dt);
+
+% 假设 Te_2, T0, Temp, dTemp_dt 是已知的实验数据
+Te_2 = 404.217240000000; % 假设的 Te_2 值
+T0 = 397.351850000000;    % 假设的 T0 值
+Te_2=double(Te_2);
+T0 = double(T0); 
+% 定义目标函数，用于最小二乘法
+%Function = @(p, Temp) log(p(1)) + p(2)/(8.314*Temp) - log(dTemp_dt/(Te_2 - T0));
+Function = @(p, Temp) (Te_2 - Temp).*exp(log(p(1)) - p(2)./(8.314.*Temp));
+
+% 其中 p(1) 对应于 A_2，p(2) 对应于 Ea_2
+% Temp 是温度数据，dTemp_dt 是随时间变化的温度数据，Te_2 和 T0 是常数
+
+
+
+% 初始参数猜测，这需要你根据实际情况进行估计
+initialGuess = double([1*10^13.244541, 112238.336933]); % 例如，[A_2的估计值), Ea_2的估计值]
+Ub=double([1*10^20,3*10^5]);
+Lb=double([1*10^2,0.2*10^5]);
+
+% 使用 lsqcurvefit 进行参数估计
+options = optimoptions('lsqcurvefit', 'Display', 'iter', 'MaxFunEvals', 1000);
+[p, resnorm] = lsqcurvefit(Function, initialGuess, Temp, dTemp_dt_filtered, Lb, Ub, options);
+
+% 从估计的参数中获取 A_2 和 Ea_2
+A_2 = p(1);
+Ea_2 = p(2);
+
+% 显示结果
+fprintf('A_2 = %f\n', A_2);
+fprintf('Ea_2 = %f\n', Ea_2);
+
+% 计算目标函数的残差范数
+fprintf('Residual norm: %f\n', resnorm);
+
+R=log(dTemp_dt_filtered./(Te_2-Temp));
+R_SIM=log(A_2) - Ea_2./(8.314.*Temp);
+x=1./Temp;
+plot(x,R,x,R_SIM,LineWidth=3);
